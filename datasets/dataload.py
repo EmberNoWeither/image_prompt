@@ -44,3 +44,10 @@ def create_dataloader(batch_size = 16, num_workers=8):
     
     return train_loader, val_loader, test_loader
 
+
+# train_loader, val_loader, test_loader = create_dataloader(batch_size = 16, num_workers=8)
+
+# for i, (imgs, caps, caplens) in enumerate(train_loader):
+#     print(caps.shape)
+#     break
+

@@ -15,7 +15,7 @@ class ImageTextDataset(Dataset):
     PyTorch数据类，用于PyTorch DataLoader来按批次产生数据
     """
 
-    def __init__(self, dataset_path, vocab_path, split, captions_per_image=1, max_len=100, transform=None):
+    def __init__(self, dataset_path, vocab_path, split, captions_per_image=1, max_len=98, transform=None):
         """
         参数：
             dataset_path：json格式数据文件路径
