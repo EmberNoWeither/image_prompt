@@ -30,7 +30,7 @@ class GridWithTransformer(nn.Module):
         sorted_cap_lens = sorted_cap_lens.cpu().numpy() - 1     # 序列-1 最后一个时刻不需要预测下一个词
         
         
-        outs = self.decoder(image_code, captions)
+        outs = self.decoder(image_code.to('cuda'), captions.to('cuda'))
         preds = self.decoder.predictor(outs)
         
         log_var = {}

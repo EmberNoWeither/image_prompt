@@ -36,7 +36,7 @@ def create_dataloader(batch_size = 16, num_workers=8):
         '/workspace/image_prompt/datasets/test_data.json', '/workspace/image_prompt/vocab.json', 'test', transform=val_tx
     )
     
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True, persistent_workers=True)
     
     val_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True, drop_last=False)
     

@@ -8,7 +8,7 @@ import torch
 class PositionalEncoding(nn.Module):
     "Implement the PE function."
 
-    def __init__(self, d_model, dropout, max_len=100):
+    def __init__(self, d_model, dropout, max_len=112):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
@@ -91,11 +91,10 @@ class TransformerPromptDecoder(nn.Module):
         image_code = self.image_code_embedding(image_code)
         # image_code = image_code.permute(1, 0, 2)
         
-        tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.size()[-1])
-        tgt_key_padding_mask = self.get_key_padding_mask(tgt)
-        print(tgt.shape)
-        tgt = self.embedding(tgt)
-        tgt = self.positional_encoding(tgt)
+        tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.size()[-1]).to('cuda')
+        tgt_key_padding_mask = self.get_key_padding_mask(tgt).to('cuda')
+        tgt = self.embedding(tgt).to('cuda')
+        tgt = self.positional_encoding(tgt).to('cuda')
         
         out = self.decoder(image_code, tgt, tgt_mask=tgt_mask, tgt_key_padding_mask=tgt_key_padding_mask)
         return out
