@@ -52,11 +52,6 @@ class TransformerPromptDecoder(nn.Module):
         self.decoder = nn.Transformer(d_model=d_model,nhead=n_head,num_encoder_layers=num_encoder_layers,
                                       num_decoder_layers=num_decoder_layers,
                                     dim_feedforward=dim_feedforward, batch_first=True)
-        # self.decoder = nn.TransformerDecoder(
-        #                 nn.TransformerDecoderLayer(d_model=d_model+image_code_dim, nhead=n_head,
-        #                                             dim_feedforward=dim_feedforward), 
-        #                 num_layers
-        # )
         
         self.fc = nn.Linear(d_model, vocab_size)
         self.softmax = nn.LogSoftmax(dim=1)
@@ -91,10 +86,10 @@ class TransformerPromptDecoder(nn.Module):
         image_code = self.image_code_embedding(image_code)
         # image_code = image_code.permute(1, 0, 2)
         
-        tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.size()[-1]).to('cuda')
-        tgt_key_padding_mask = self.get_key_padding_mask(tgt).to('cuda')
-        tgt = self.embedding(tgt).to('cuda')
-        tgt = self.positional_encoding(tgt).to('cuda')
+        tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.size()[-1], device=image_code.device)
+        tgt_key_padding_mask = self.get_key_padding_mask(tgt).to(image_code.device)
+        tgt = self.embedding(tgt.to(image_code.device))
+        tgt = self.positional_encoding(tgt)
         
         out = self.decoder(image_code, tgt, tgt_mask=tgt_mask, tgt_key_padding_mask=tgt_key_padding_mask)
         return out

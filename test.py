@@ -1,15 +1,25 @@
 from model.ImagePromptGenerator import GridWithTransformer
 from datasets.dataload import create_dataloader
 import torch
+import json
 
-generator = GridWithTransformer().to('cuda')
+generator = GridWithTransformer().to('cpu')
 
 generator.load_state_dict(torch.load('/workspace/image_prompt/sd-model-finetuned/checkpoint-5000/pytorch_model.bin'))
 
 
-train_loader, val_loader, test_loader = create_dataloader(batch_size = 16, num_workers=8)
+train_loader, val_loader, test_loader = create_dataloader(batch_size = 1, num_workers=2)
 
-for i, (imgs, caps, caplens) in enumerate(val_loader):
-    log_var, loss = generator.train_step(imgs.to('cuda'), caps.to('cuda'), caplens.to('cuda'))
-    print(loss)
+with open('vocab.json', 'r') as f:
+    vocab = json.load(f)
+
+
+new_dict={v:k for k,v in vocab.items()}
+for i, (imgs, caps, caplens) in enumerate(train_loader):
+    text = generator.generate_by_beamsearch(imgs.to('cpu'), 5, 102, vocab)
+    print(text)
+    for tx in text:
+        for word in tx:
+            print(new_dict[word], end=' ')
+        print('\n')
     break
