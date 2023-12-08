@@ -62,17 +62,12 @@ class GridWithTransformer(nn.Module):
             probs = torch.zeros(beam_k, 1).to(device)
             k = beam_k
             while True:
-                print(cur_sents.shape)
-                preds = self.decoder(image_code[:k], cur_sents)
+                preds = self.decoder(image_code[:k], cur_sents)[:, -1]
                 # -> (k, vocab_size)
                 preds = self.decoder.predictor(preds).view(k, -1)
-                # print(preds.shape)
-                preds = preds[:,-109:]
+                
                 # 对每个候选句子采样概率值最大的前k个单词生成k个新的候选句子，并计算概率
                 # -> (k, vocab_size)
-                
-                # print(probs.shape)
-                # print(preds.shape)
                 probs = probs.repeat(1,preds.size(1)) + preds
                 if cur_sents.size(1) == 1:
                     # 第一步时，所有句子都只包含开始标识符，因此，仅利用其中一个句子计算topk
@@ -123,6 +118,7 @@ class GridWithTransformer(nn.Module):
                 # 否则选取包含结束符的句子中概率最大的句子
                 gen_sent = end_sents[end_probs.index(max(end_probs))]
             texts.append(gen_sent)
+            print(texts)
         return texts
     
     def predict_step(self, imgs, caps, caplens):

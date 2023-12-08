@@ -23,7 +23,7 @@ import sys
 from datasets.dataload import create_dataloader
 from model.ImagePromptGenerator import GridWithTransformer
 import numpy as np
-
+import matplotlib.pyplot as plt
 
 
 
@@ -499,6 +499,8 @@ def main():
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
 
+    loss_line = []
+    
     for epoch in range(first_epoch, args.num_train_epochs):
         generator.train()
         train_loss = 0.0
@@ -512,6 +514,7 @@ def main():
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
 
+                loss_line.append(avg_loss.item())
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -538,6 +541,12 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
+            
+        plt.figure()
+        plt.plot(loss_line)
+        plt.ylabel('Loss:')
+        plt.show()
+        plt.savefig('loss_curve.png')
 
 
     accelerator.wait_for_everyone()
