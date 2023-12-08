@@ -376,7 +376,7 @@ def main():
             ).repo_id
 
     if args.model_type == 'GT':
-        generator = GridWithTransformer()
+        generator = GridWithTransformer(vision_encoder='Resnet')
     
 
     # Enable TF32 for faster training on Ampere GPUs,

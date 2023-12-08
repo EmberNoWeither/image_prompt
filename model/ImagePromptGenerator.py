@@ -3,7 +3,7 @@ import math
 import numpy as np
 import torch.nn as nn
 import torch
-from model.VisionEncoder import ViTEncoder
+from model.VisionEncoder import ViTEncoder, ResnetEncoder
 from model.PromptDecoder import TransformerPromptDecoder
 from losses.loss import PackedCrossEntropyLoss
 
@@ -11,9 +11,15 @@ from losses.loss import PackedCrossEntropyLoss
 class GridWithTransformer(nn.Module):
     def __init__(self, vocab_size=109, image_code_dim=768, num_encoder_layers=6,
                     num_decoder_layers=6, d_model=512, n_head=8, 
-                    dim_feedforward=2048,image_size=256,*args, **kwargs) -> None:
+                    dim_feedforward=2048,image_size=256, vision_encoder = 'ViT',*args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.encoder = ViTEncoder(image_size=image_size)
+        
+        if vision_encoder == 'ViT':
+            self.encoder = ViTEncoder(image_size=image_size)
+        elif vision_encoder == 'Resnet':
+            self.encoder = ResnetEncoder()
+            image_code_dim = 2048
+            
         self.decoder = TransformerPromptDecoder(vocab_size=vocab_size, image_code_dim=image_code_dim, num_encoder_layers=num_encoder_layers,
                                                     num_decoder_layers=num_decoder_layers, d_model=d_model, n_head=n_head, 
                                                     dim_feedforward=dim_feedforward)
@@ -76,17 +82,12 @@ class GridWithTransformer(nn.Module):
                     # probs: (k, vocab_size) 是二维张量
                     # topk函数直接应用于二维张量会按照指定维度取最大值，这里需要在全局取最大值
                     # 因此，将probs转换为一维张量，再使用topk函数获取最大的k个值
-                    # print(probs.shape)
                     values, indices = probs.view(-1).topk(k, 0, True, True)
-                    # print(indices)
+
                 # 计算最大的k个值对应的句子索引和词索引
                 sent_indices = torch.div(indices, vocab_size, rounding_mode='trunc')
-                # print(sent_indices)
                 word_indices = indices % vocab_size 
                 
-                # print(cur_sents[sent_indices].shape)
-                # print(word_indices.unsqueeze(-1).shape)
-
                 # 将词拼接在前一轮的句子后，获得此轮的句子
                 cur_sents = torch.cat([cur_sents[sent_indices], word_indices.unsqueeze(1)], dim=1)
                 # 查找此轮生成句子结束符<end>的句子
