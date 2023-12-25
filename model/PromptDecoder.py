@@ -41,13 +41,13 @@ class PositionalEncoding(nn.Module):
 
 
 class TransformerPromptDecoder(nn.Module):
-    def __init__(self, vocab_size=109, image_code_dim=768, num_encoder_layers=6,
-                    num_decoder_layers=6, d_model=512, n_head=8, dim_feedforward=2048, *args, **kwargs) -> None:
+    def __init__(self, vocab_size=109, image_code_dim=768, num_encoder_layers=3,
+                    num_decoder_layers=3, d_model=512, n_head=8, dim_feedforward=2048, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.image_code_embedding = nn.Linear(image_code_dim, d_model)
         self.sigmoid = nn.Sigmoid()
-        self.positional_encoding = PositionalEncoding(d_model, dropout=0)
+        self.positional_encoding = PositionalEncoding(d_model, dropout=0.2)
         self.d_model_size = d_model
 
         self.decoder = nn.Transformer(d_model=d_model,nhead=n_head,num_encoder_layers=num_encoder_layers,
@@ -55,6 +55,7 @@ class TransformerPromptDecoder(nn.Module):
                                     dim_feedforward=dim_feedforward, batch_first=True)
         
         self.fc = nn.Linear(d_model, vocab_size)
+        self.dropout = nn.Dropout(p=0.1)
         self.softmax = nn.LogSoftmax(dim=1)
         
     def get_key_padding_mask(self, tokens):
@@ -71,7 +72,6 @@ class TransformerPromptDecoder(nn.Module):
         
         
     def predictor(self, out):
-        out = self.fc(out)
         out = self.softmax(out)
         return out
     
@@ -79,12 +79,12 @@ class TransformerPromptDecoder(nn.Module):
     def forward(self, image_code, tgt):
         # 将图像网格表示转换为序列表示形式 
         batch_size, image_code_dim = image_code.size(0), image_code.size(1)
-        # -> (batch_size, grid_height, grid_width, image_code_dim) 
-        image_code = image_code.permute(0, 2, 3, 1)  
-        # -> (batch_size, grid_height * grid_width, image_code_dim)
-        image_code = image_code.view(batch_size, -1, image_code_dim)
+        # # -> (batch_size, grid_height, grid_width, image_code_dim) 
+        # image_code = image_code.permute(0, 2, 3, 1)  
+        # # -> (batch_size, grid_height * grid_width, image_code_dim)
+        # image_code = image_code.view(batch_size, -1, image_code_dim)
         
-        image_code = self.sigmoid(self.image_code_embedding(image_code))
+        image_code = self.sigmoid(self.image_code_embedding(image_code)).view(batch_size, 1, -1)
         
         tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.size()[-1], device=image_code.device)
         tgt_key_padding_mask = self.get_key_padding_mask(tgt).to(image_code.device)
@@ -92,5 +92,7 @@ class TransformerPromptDecoder(nn.Module):
         tgt = self.positional_encoding(tgt)
         
         out = self.decoder(image_code, tgt, tgt_mask=tgt_mask, tgt_key_padding_mask=tgt_key_padding_mask)
+        out = self.fc(out)
+        # out = self.dropout(out)
         return out
         

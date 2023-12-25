@@ -9,16 +9,16 @@ from losses.loss import PackedCrossEntropyLoss
 
 
 class GridWithTransformer(nn.Module):
-    def __init__(self, vocab_size=109, image_code_dim=768, num_encoder_layers=6,
-                    num_decoder_layers=6, d_model=512, n_head=8, 
-                    dim_feedforward=2048,image_size=256, vision_encoder = 'ViT',*args, **kwargs) -> None:
+    def __init__(self, vocab_size=109, image_code_dim=1000, num_encoder_layers=3,
+                    num_decoder_layers=3, d_model=512, n_head=8, 
+                    dim_feedforward=2048,image_size=224, vision_encoder = 'ViT',*args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         
         if vision_encoder == 'ViT':
             self.encoder = ViTEncoder(image_size=image_size)
         elif vision_encoder == 'Resnet':
             self.encoder = ResnetEncoder()
-            image_code_dim = 2048
+            # image_code_dim = 2048
             
         self.decoder = TransformerPromptDecoder(vocab_size=vocab_size, image_code_dim=image_code_dim, num_encoder_layers=num_encoder_layers,
                                                     num_decoder_layers=num_decoder_layers, d_model=d_model, n_head=n_head, 
@@ -35,10 +35,14 @@ class GridWithTransformer(nn.Module):
         
         sorted_cap_lens = sorted_cap_lens.cpu().numpy() - 1     # 序列-1 最后一个时刻不需要预测下一个词
         
-        outs = self.decoder(image_code.to('cuda'), captions.to('cuda'))
-        preds = self.decoder.predictor(outs)
+        # outs = self.decoder(image_code.to('cuda'), captions.to('cuda'))
+        # preds = self.decoder.predictor(outs)
+        
+        preds = self.decoder(image_code.to('cuda'), captions.to('cuda'))
+        # preds = self.decoder.predictor(outs)
         
         log_var = {}
+
         loss = self.loss_fn(preds, captions[:, 1:], sorted_cap_lens)
         
         log_var.update(loss_kpt = loss)
@@ -118,8 +122,9 @@ class GridWithTransformer(nn.Module):
             else: 
                 # 否则选取包含结束符的句子中概率最大的句子
                 gen_sent = end_sents[end_probs.index(max(end_probs))]
+            
+            print(len(gen_sent))
             texts.append(gen_sent)
-            print(texts)
         return texts
     
     def predict_step(self, imgs, caps, caplens):

@@ -344,7 +344,7 @@ def main():
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
-        log_with=args.report_to,
+        # log_with=args.report_to,
         # logging_dir=logging_dir,
         project_config=accelerator_project_config,
     )
@@ -376,7 +376,8 @@ def main():
             ).repo_id
 
     if args.model_type == 'GT':
-        generator = GridWithTransformer(vision_encoder='Resnet')
+        generator = GridWithTransformer(vision_encoder="Resnet")
+        # generator.load_state_dict(torch.load("/workspace/image_prompt/sd-model-finetuned-lll/checkpoint-100000/backbone/backbone.pth"))
     
 
     # Enable TF32 for faster training on Ampere GPUs,
@@ -441,6 +442,19 @@ def main():
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
+        
+        
+    def save_model_hook(models, weights, output_dir):
+        for i, model in enumerate(models):
+            if isinstance(model, GridWithTransformer):
+                os.makedirs(os.path.join(output_dir, "backbone"))
+                torch.save(model.state_dict(),os.path.join(output_dir, "backbone/backbone.pth"))
+                
+            # make sure to pop weight so that corresponding model is not saved again
+            weights.pop()
+
+    accelerator.register_save_state_pre_hook(save_model_hook)
+
 
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -508,7 +522,7 @@ def main():
             with accelerator.accumulate(generator):   
                 
                 if args.model_type == 'GT':
-                    log_vars, loss = generator.module.train_step(imgs.to(accelerator.device), caps.to(accelerator.device), caplens.to(accelerator.device))
+                    log_vars, loss = generator.train_step(imgs.to(accelerator.device), caps.to(accelerator.device), caplens.to(accelerator.device))
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
@@ -533,7 +547,8 @@ def main():
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
+                        os.makedirs(save_path, exist_ok=True)
+                        accelerator.save_state(save_path, False)
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -547,6 +562,7 @@ def main():
         plt.ylabel('Loss:')
         plt.show()
         plt.savefig('loss_curve.png')
+        plt.close()
 
 
     accelerator.wait_for_everyone()
