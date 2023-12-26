@@ -53,7 +53,10 @@ def img_predict(model_path, img_path, opt={}):
             print(new_dict[word], end=' ')
         print('\n')
         
-    return text_show
+    text = [new_dict[wd]+ " " for wd in tx for tx in text_show]
+    text = "".join(text)
+        
+    return text
 
 
 # pre_opt = {
@@ -61,4 +64,6 @@ def img_predict(model_path, img_path, opt={}):
 #     # 'predict_method' : 'random_sample'
 # }
 
-# img_predict('/workspace/image_prompt/sd-model-finetuned-base/checkpoint-15000/pytorch_model.bin', '/workspace/data/deepfashion-multimodal/captions_img/MEN-Denim-id_00000182-01_7_additional.jpg', pre_opt)
+# text = img_predict('/workspace/image_prompt/sd-model-finetuned-base/checkpoint-15000/pytorch_model.bin', '/workspace/data/deepfashion-multimodal/captions_img/MEN-Denim-id_00000182-01_7_additional.jpg', pre_opt)
+
+# print(text)
