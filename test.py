@@ -17,7 +17,7 @@ if test_type == 'img':
     model_path = sys.argv[2]    # pt file
     img_path = sys.argv[3]
     
-    generator = GridWithTransformer().to('cpu')
+    generator = GridWithTransformer(vision_encoder='Resnet').to('cuda')
     generator.load_state_dict(torch.load(model_path))
 
     val_tx = transforms.Compose([
@@ -31,7 +31,9 @@ if test_type == 'img':
 
     img = val_tx(img).reshape((1,3,224,224))
     new_dict={v:k for k,v in vocab.items()}
-    text = generator.generate_by_beamsearch(img.to('cpu'), 5, 102, vocab)
+    # text = generator.generate_by_beamsearch(img.to('cuda'), 5, 102, vocab)
+    text, __ = generator.pre_sample(img.to('cuda'), 102, vocab)
+    text = text.tolist()
     for tx in text:
         for word in tx:
             print(new_dict[word], end=' ')
@@ -39,19 +41,19 @@ if test_type == 'img':
 
 elif test_type == 'bleu':
     model_path = sys.argv[2]    # pt file
-    generator = GridWithTransformer().to('cuda')
+    generator = GridWithTransformer(vision_encoder="Resnet").to('cuda')
     generator.load_state_dict(torch.load(model_path))
-    train_loader, val_loader, test_loader = create_dataloader(batch_size=2)
+    train_loader, val_loader, test_loader = create_dataloader(batch_size=256)
         # 设置模型超参数和辅助变量
     config = Namespace(
-        max_len = 120,
+        max_len = 110,
         captions_per_image = 1,
         beam_k = 5
     )
     
     bleu4 = BLEUMetric.evaluate(test_loader, generator, config, vocab=vocab)
     
-    with open('./bleu_score.json', 'w') as f:
+    with open('./bleu_score_RL_3000.json', 'w') as f:
         json.dump(
             {model_path:bleu4}, f
         )

@@ -1,11 +1,16 @@
 import torchvision.models as models
-import math
+import json
 import numpy as np
 import torch.nn as nn
 import torch
 from model.VisionEncoder import ViTEncoder, ResnetEncoder
 from model.PromptDecoder import TransformerPromptDecoder
-from losses.loss import PackedCrossEntropyLoss
+from losses.loss import PackedCrossEntropyLoss, RewardCriterion
+from metric.bleu import filter_useless_words
+from nltk.translate.bleu_score import corpus_bleu, sentence_bleu
+from nltk.translate.meteor_score import meteor_score
+from rouge import Rouge
+import numpy as np
 
 
 class GridWithTransformer(nn.Module):
@@ -24,6 +29,16 @@ class GridWithTransformer(nn.Module):
                                                     num_decoder_layers=num_decoder_layers, d_model=d_model, n_head=n_head, 
                                                     dim_feedforward=dim_feedforward)
         self.loss_fn = PackedCrossEntropyLoss()
+        self.rl_fn = RewardCriterion()
+        
+        with open('vocab.json', 'r') as f:
+            vocab = json.load(f)
+        
+        self.vocab = vocab
+        
+        self.bleu_weight = 0.7
+        self.meteor_weight = 0.3
+        
         
     
     def train_step(self, imgs, captions, caplens):
@@ -35,9 +50,6 @@ class GridWithTransformer(nn.Module):
         
         sorted_cap_lens = sorted_cap_lens.cpu().numpy() - 1     # 序列-1 最后一个时刻不需要预测下一个词
         
-        # outs = self.decoder(image_code.to('cuda'), captions.to('cuda'))
-        # preds = self.decoder.predictor(outs)
-        
         preds = self.decoder(image_code.to('cuda'), captions.to('cuda'))
         # preds = self.decoder.predictor(outs)
         
@@ -47,6 +59,109 @@ class GridWithTransformer(nn.Module):
         
         log_var.update(loss_kpt = loss)
         return log_var, loss
+    
+    
+    def rl_train_step(self, imgs, captions, caplens):
+        vocab = self.vocab
+        # 存储候选文本
+        greedy_cands = []
+        gen_cands = []
+        # 存储参考文本
+        refs = []
+        # 需要过滤的词
+        filterd_words = set({vocab['<start>'], vocab['<end>'], vocab['<pad>']})
+        cpi = 1
+        device = next(self.parameters()).device
+        
+        gen_result, sampleLogprob = self.pre_sample(imgs, 110, vocab)
+        gen_cands.extend([filter_useless_words(text, filterd_words) for text in gen_result.tolist()])
+        with torch.no_grad():
+            greedy_texts = self.generate_by_beamsearch(imgs.to(device), 1, 110, vocab)
+            # 候选文本
+            greedy_cands.extend([filter_useless_words(text, filterd_words) for text in greedy_texts])
+            # # 参考文本
+            refs.extend([filter_useless_words(cap, filterd_words) for cap in captions.tolist()])
+                
+                
+        multiple_refs = []
+        for idx in range(len(refs)):
+            multiple_refs.append(refs[(idx//cpi)*cpi : (idx//cpi)*cpi+cpi])
+            
+        refs = [[str(word) for word in subrefs] for subrefs in refs]
+        gen_cands = [[str(word) for word in subrefs] for subrefs in gen_cands]
+        greedy_cands = [[str(word) for word in subrefs] for subrefs in greedy_cands]
+
+        #bleu
+        gen_bleu4 = np.array([sentence_bleu([ref],cand) for ref,cand in zip(refs,gen_cands)])
+        greedy_bleu4 = np.array([sentence_bleu([ref],cand) for ref,cand in zip(refs,greedy_cands)])
+
+        # meteor
+        gen_meteor = [meteor_score([ref],cand) for ref,cand in zip(refs,gen_cands)]
+        gen_meteor_score = np.array(gen_meteor)
+        
+        greedy_meteor = [meteor_score([ref],cand) for ref,cand in zip(refs,greedy_cands)]
+        greedy_meteor_score = np.array(greedy_meteor)
+                
+        gen_score = self.bleu_weight * gen_bleu4 + self.meteor_weight * gen_meteor_score
+        greedy_score = self.bleu_weight * greedy_bleu4 + self.meteor_weight * greedy_meteor_score
+
+        scores = gen_score - greedy_score
+        rewards = np.repeat(scores[:, np.newaxis], gen_result.shape[1], 1)
+        
+        loss = self.rl_fn(sampleLogprob, gen_result, torch.from_numpy(rewards).float().cuda())
+        log_var = {}
+        
+        log_var.update(loss_kpt = loss)
+        
+        return log_var, loss
+    
+    
+    def pre_sample(self, images, max_len, vocab):
+        vocab_size = len(vocab)
+        image_codes = self.encoder(images)
+        texts = []
+        device = images.device
+        
+        batch_size = image_codes.size(0)
+        
+        seq = image_codes.new_zeros(batch_size, max_len+2, dtype=torch.long)
+        seqLogprobs = image_codes.new_zeros(batch_size, max_len+2)
+        
+        cur_sents = torch.full((batch_size, 1,), vocab['<start>'], dtype=torch.long).to(device)
+
+        for t in range(max_len + 1):
+            if cur_sents.size(1) >= max_len+2:
+                break
+            preds = self.decoder(image_codes, cur_sents)[:, -1]
+            # -> (k, vocab_size)
+            preds = self.decoder.predictor(preds)
+
+            prob_prev = torch.exp(preds.data).cpu()
+
+            it = torch.multinomial(prob_prev, 1).cuda()
+            sampleLogprobs = preds.gather(1, it)
+
+            it = it.view(-1).long()
+            # stop when all finished
+            if t == 0:
+                unfinished = (it != vocab['<end>'])
+            else:
+                unfinished = unfinished * (it != vocab['<end>'])
+
+            temp = unfinished.long()
+            it = it * temp
+
+            seq[:,t] = it
+            seqLogprobs[:,t] = sampleLogprobs.view(-1)
+            
+            cur_sents = torch.cat([cur_sents, it.view(batch_size, -1)], dim=1)
+
+            if unfinished.sum() == 0:
+                # print(seq.tolist())
+                break
+            
+        return seq, seqLogprobs
+          
         
     @torch.no_grad()
     def generate_by_beamsearch(self, images, beam_k, max_len, vocab):
@@ -75,10 +190,11 @@ class GridWithTransformer(nn.Module):
                 preds = self.decoder(image_code[:k], cur_sents)[:, -1]
                 # -> (k, vocab_size)
                 preds = self.decoder.predictor(preds).view(k, -1)
-                
+
                 # 对每个候选句子采样概率值最大的前k个单词生成k个新的候选句子，并计算概率
                 # -> (k, vocab_size)
                 probs = probs.repeat(1,preds.size(1)) + preds
+                
                 if cur_sents.size(1) == 1:
                     # 第一步时，所有句子都只包含开始标识符，因此，仅利用其中一个句子计算topk
                     values, indices = probs[0].topk(k, 0, True, True)
@@ -123,7 +239,7 @@ class GridWithTransformer(nn.Module):
                 # 否则选取包含结束符的句子中概率最大的句子
                 gen_sent = end_sents[end_probs.index(max(end_probs))]
             
-            print(len(gen_sent))
+            # print(len(gen_sent))
             texts.append(gen_sent)
         return texts
     

@@ -1,3 +1,6 @@
-sd-model-finetuned
-checkpoints
-vit_transformer_model
+./sd-model-finetuned
+./checkpoints
+./sd-model-finetuned-base
+./vit_transformer_model
+./sd-model-finetuned-rl-ori
+./test-model

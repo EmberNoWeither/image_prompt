@@ -36,6 +36,9 @@ def parse_args():
         "--model_type", type=str, default='GT', help="The type of model to train, like GT(GridWithTransformer)"
     )
     parser.add_argument(
+        "--rl_after", type=int, default=50, help="After xx epochs start reinforce learning"
+    )
+    parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
         default=None,
@@ -377,7 +380,7 @@ def main():
 
     if args.model_type == 'GT':
         generator = GridWithTransformer(vision_encoder="Resnet")
-        # generator.load_state_dict(torch.load("/workspace/image_prompt/sd-model-finetuned-lll/checkpoint-100000/backbone/backbone.pth"))
+        generator.load_state_dict(torch.load("/workspace/image_prompt/backbone-100000.pth"))
     
 
     # Enable TF32 for faster training on Ampere GPUs,
@@ -453,7 +456,7 @@ def main():
             # make sure to pop weight so that corresponding model is not saved again
             weights.pop()
 
-    accelerator.register_save_state_pre_hook(save_model_hook)
+    # accelerator.register_save_state_pre_hook(save_model_hook)
 
 
 
@@ -514,6 +517,9 @@ def main():
     progress_bar.set_description("Steps")
 
     loss_line = []
+    rl_loss = []
+    
+    rl_epochs = args.rl_after
     
     for epoch in range(first_epoch, args.num_train_epochs):
         generator.train()
@@ -522,13 +528,18 @@ def main():
             with accelerator.accumulate(generator):   
                 
                 if args.model_type == 'GT':
-                    log_vars, loss = generator.train_step(imgs.to(accelerator.device), caps.to(accelerator.device), caplens.to(accelerator.device))
+                    if epoch <= rl_epochs:
+                        log_vars, loss = generator.module.train_step(imgs.to(accelerator.device), caps.to(accelerator.device), caplens.to(accelerator.device))
+                    else:
+                        log_vars, loss = generator.module.rl_train_step(imgs.to(accelerator.device), caps.to(accelerator.device), caplens.to(accelerator.device))
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
-
-                loss_line.append(avg_loss.item())
+                if epoch <= rl_epochs:
+                    loss_line.append(avg_loss.item())
+                else:
+                    rl_loss.append(avg_loss.item())
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -541,28 +552,41 @@ def main():
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
+                if epoch <= rl_epochs:
+                    accelerator.log({"train_loss": train_loss}, step=global_step)
+                else:
+                    accelerator.log({"rl_loss": train_loss}, step=global_step)
                 train_loss = 0.0
-
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         os.makedirs(save_path, exist_ok=True)
-                        accelerator.save_state(save_path, False)
+                        accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
-
-            logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+                        
+            if epoch <= rl_epochs:
+                logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            else:
+                logs = {"RL_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
             if global_step >= args.max_train_steps:
                 break
             
-        plt.figure()
-        plt.plot(loss_line)
-        plt.ylabel('Loss:')
-        plt.show()
-        plt.savefig('loss_curve.png')
-        plt.close()
+        if epoch <= rl_epochs: 
+            plt.figure()
+            plt.plot(loss_line)
+            plt.ylabel('Sd-Loss:')
+            plt.show()
+            plt.savefig('loss_curve.png')
+            plt.close()
+        else:
+            plt.figure()
+            plt.plot(rl_loss)
+            plt.ylabel('RL-Loss:')
+            plt.show()
+            plt.savefig('RLloss_curve.png')
+            plt.close()
 
 
     accelerator.wait_for_everyone()

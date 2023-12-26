@@ -8,7 +8,7 @@ import torch
 class PositionalEncoding(nn.Module):
     "Implement the PE function."
 
-    def __init__(self, d_model, dropout, max_len=112):
+    def __init__(self, d_model, dropout, max_len=120):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 

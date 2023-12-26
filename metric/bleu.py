@@ -32,8 +32,10 @@ class BLEUMetric(nn.Module):
                 texts = model.generate_by_beamsearch(imgs.to(device), config.beam_k, config.max_len+2, vocab)
                 # 候选文本
                 cands.extend([filter_useless_words(text, filterd_words) for text in texts])
-                # 参考文本
+                # # 参考文本
                 refs.extend([filter_useless_words(cap, filterd_words) for cap in caps.tolist()])
+                
+                
         # 实际上，每个候选文本对应cpi条参考文本
         multiple_refs = []
         for idx in range(len(refs)):
