@@ -39,7 +39,6 @@ class GridWithTransformer(nn.Module):
         self.bleu_weight = 0.7
         self.meteor_weight = 0.3
         
-        
     
     def train_step(self, imgs, captions, caplens):
         sorted_cap_lens, sorted_cap_indices = torch.sort(caplens, 0, True)

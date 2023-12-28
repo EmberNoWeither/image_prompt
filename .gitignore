@@ -4,3 +4,8 @@
 ./vit_transformer_model
 ./sd-model-finetuned-rl-ori
 ./test-model
+bleu*.json
+test*.json
+backbone*.pth
+coco*.json
+score*.json

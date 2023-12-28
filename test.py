@@ -6,6 +6,7 @@ import json
 import torchvision.transforms as transforms
 import sys
 from metric.bleu import BLEUMetric
+from metric.evaluate import EvaluateMetric
 from argparse import Namespace
 
 test_type = sys.argv[1] # img, bleu
@@ -43,7 +44,7 @@ elif test_type == 'bleu':
     model_path = sys.argv[2]    # pt file
     generator = GridWithTransformer(vision_encoder="Resnet").to('cuda')
     generator.load_state_dict(torch.load(model_path))
-    train_loader, val_loader, test_loader = create_dataloader(batch_size=256)
+    train_loader, val_loader, test_loader = create_dataloader(batch_size=64)
         # 设置模型超参数和辅助变量
     config = Namespace(
         max_len = 110,
@@ -51,9 +52,12 @@ elif test_type == 'bleu':
         beam_k = 5
     )
     
-    bleu4 = BLEUMetric.evaluate(test_loader, generator, config, vocab=vocab)
+    bleu_score, meteor_score, rouge_2_score, rouge_L_score = EvaluateMetric.evaluate(test_loader, generator, config, vocab=vocab)
     
-    with open('./bleu_score_RL_3000.json', 'w') as f:
+    with open('./score_1w5_AFRL.json', 'w') as f:
         json.dump(
-            {model_path:bleu4}, f
+            {'bleu_score':bleu_score,
+             'meteor_score':meteor_score,
+             'rouge_2_score':rouge_2_score,
+             'rouge_L_score':rouge_L_score}, f
         )
