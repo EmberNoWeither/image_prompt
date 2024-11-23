@@ -1,6 +1,6 @@
 # It's just a homework code.
 # Standard Train and RL Train
-   we finished the RL Train and the score like CIDEr was truly improved but we found a stange situation that the model tends to say the same sentence and performed worse. :anguished:
+   we finished the RL Train and the score like CIDEr was truly improved but we found a strange situation that the model tends to say the same sentence and performed worse. :anguished:
 
 # img_inference
    if you need to use the specific model to inference specific image to get the text result, you could use the function in *img_predict.py*.
